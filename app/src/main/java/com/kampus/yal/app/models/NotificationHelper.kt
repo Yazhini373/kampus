@@ -560,6 +560,260 @@ object NotificationHelper {
         sendNotification(context, notificationId, builder, "deadline_${event.id}")
     }
 
+    // --- 🎓 2. EVENT REGISTRATION SUCCESSFUL NOTIFICATION ---
+    fun notifyRegistrationSuccessful(
+        context: Context,
+        studentEmail: String,
+        studentName: String,
+        event: CollegeEvent
+    ) {
+        val safeEventTitle = event.title.trim().ifBlank { "College Event" }
+        val regKey = "event_reg_${event.id}_${studentEmail.trim().lowercase()}"
+
+        if (isEventAlreadyProcessed(context, regKey)) {
+            Log.d(TAG, "REGISTRATION_NOTIF: Already notified $studentEmail for ${event.id}, skipping")
+            return
+        }
+        markEventAsProcessed(context, regKey)
+
+        ensureNotificationChannels(context)
+
+        val notificationId = (event.id.hashCode() + studentEmail.hashCode()).takeIf { it != 0 } ?: (System.currentTimeMillis() % 10000).toInt()
+
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            putExtra("eventId", event.id)
+            putExtra("fromNotification", true)
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            notificationId,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+
+        val title = "🎉 Registration Confirmed: $safeEventTitle"
+        val message = "Hi $studentName, your registration for '$safeEventTitle' has been confirmed! Date: ${event.eventDate} at ${event.startTime}."
+
+        val builder = NotificationCompat.Builder(context, PUSH_EVENT_CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle(title)
+            .setContentText("You are successfully registered for $safeEventTitle!")
+            .setStyle(NotificationCompat.BigTextStyle().bigText(message))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_EVENT)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setDefaults(NotificationCompat.DEFAULT_ALL)
+            .setSound(soundUri)
+            .setAutoCancel(true)
+            .setContentIntent(pendingIntent)
+
+        sendNotification(context, notificationId, builder, regKey)
+
+        // Save targeted in-app notification ONLY for this student in MongoDB
+        createAndSendNotification(
+            context = context,
+            userId = studentEmail.trim().lowercase(),
+            userRole = "STUDENT",
+            title = title,
+            message = message,
+            type = "EVENT_REGISTERED",
+            eventId = event.id
+        )
+    }
+
+    // --- ❌ 4. EVENT REJECTED NOTIFICATION ---
+    fun notifyEventRejected(
+        context: Context,
+        creatorEmail: String,
+        event: CollegeEvent,
+        reason: String = ""
+    ) {
+        val safeEventTitle = event.title.trim().ifBlank { "Event" }
+        val rejectKey = "event_rejected_${event.id}_${creatorEmail.trim().lowercase()}"
+
+        if (isEventAlreadyProcessed(context, rejectKey)) {
+            Log.d(TAG, "REJECT_NOTIF: Already notified $creatorEmail for rejection of ${event.id}, skipping")
+            return
+        }
+        markEventAsProcessed(context, rejectKey)
+
+        ensureNotificationChannels(context)
+
+        val notificationId = (event.id.hashCode() + 400).takeIf { it != 0 } ?: (System.currentTimeMillis() % 10000).toInt()
+
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            putExtra("eventId", event.id)
+            putExtra("fromNotification", true)
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            notificationId,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+
+        val title = "❌ Event Rejected: $safeEventTitle"
+        val reasonText = if (reason.isNotBlank()) " Reason: $reason." else ""
+        val message = "Your event submission '$safeEventTitle' has been rejected by the administrator.$reasonText Status: REJECTED."
+
+        val builder = NotificationCompat.Builder(context, PUSH_EVENT_CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_dialog_alert)
+            .setContentTitle(title)
+            .setContentText("Event '$safeEventTitle' was rejected.")
+            .setStyle(NotificationCompat.BigTextStyle().bigText(message))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_EVENT)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setDefaults(NotificationCompat.DEFAULT_ALL)
+            .setSound(soundUri)
+            .setAutoCancel(true)
+            .setContentIntent(pendingIntent)
+
+        sendNotification(context, notificationId, builder, rejectKey)
+
+        // Target in-app notification directly to the creator faculty
+        if (creatorEmail.isNotBlank()) {
+            createAndSendNotification(
+                context = context,
+                userId = creatorEmail.trim().lowercase(),
+                userRole = "FACULTY",
+                title = title,
+                message = message,
+                type = "EVENT_REJECTED",
+                eventId = event.id
+            )
+        }
+    }
+
+    // --- 🏁 5. EVENT COMPLETED NOTIFICATION ---
+    fun notifyEventCompleted(
+        context: Context,
+        event: CollegeEvent,
+        participants: List<EventParticipant> = emptyList()
+    ) {
+        val safeEventTitle = event.title.trim().ifBlank { "Event" }
+        val completedKey = "event_completed_${event.id}"
+
+        if (isEventAlreadyProcessed(context, completedKey)) {
+            Log.d(TAG, "COMPLETED_NOTIF: Already notified completion for ${event.id}, skipping")
+            return
+        }
+        markEventAsProcessed(context, completedKey)
+
+        ensureNotificationChannels(context)
+
+        val notificationId = (event.id.hashCode() + 500).takeIf { it != 0 } ?: (System.currentTimeMillis() % 10000).toInt()
+
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            putExtra("eventId", event.id)
+            putExtra("fromNotification", true)
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            notificationId,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+
+        val title = "🏁 Event Concluded: $safeEventTitle"
+        val message = "The event '$safeEventTitle' has officially concluded! Thank you for participating. Status: COMPLETED."
+
+        val builder = NotificationCompat.Builder(context, PUSH_EVENT_CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle(title)
+            .setContentText("Event '$safeEventTitle' has concluded.")
+            .setStyle(NotificationCompat.BigTextStyle().bigText(message))
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setCategory(NotificationCompat.CATEGORY_EVENT)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setDefaults(NotificationCompat.DEFAULT_ALL)
+            .setSound(soundUri)
+            .setAutoCancel(true)
+            .setContentIntent(pendingIntent)
+
+        sendNotification(context, notificationId, builder, completedKey)
+
+        // If participants list is available, send targeted in-app notification to each registered participant
+        val targetEmails = participants.map { it.studentEmail.trim().lowercase() }.distinct()
+        if (targetEmails.isNotEmpty()) {
+            for (pEmail in targetEmails) {
+                if (pEmail.isNotBlank()) {
+                    createAndSendNotification(
+                        context = context,
+                        userId = pEmail,
+                        userRole = "STUDENT",
+                        title = title,
+                        message = message,
+                        type = "EVENT_COMPLETED",
+                        eventId = event.id
+                    )
+                }
+            }
+        } else {
+            // Otherwise broadcast completion to students
+            createAndSendNotification(
+                context = context,
+                userId = "ALL",
+                userRole = "STUDENT",
+                title = title,
+                message = message,
+                type = "EVENT_COMPLETED",
+                eventId = event.id
+            )
+        }
+    }
+
+    // Generic display handler for incoming in-app notifications
+    fun notifyGenericNotification(
+        context: Context,
+        notification: AppNotification
+    ) {
+        ensureNotificationChannels(context)
+
+        val notifId = notification.id.hashCode().takeIf { it != 0 } ?: (System.currentTimeMillis() % 10000).toInt()
+
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            if (notification.eventId.isNotBlank()) {
+                putExtra("eventId", notification.eventId)
+            }
+            putExtra("fromNotification", true)
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            notifId,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+        val channelId = if (notification.type == "EVENT_DEADLINE") DEADLINES_CHANNEL_ID else PUSH_EVENT_CHANNEL_ID
+
+        val builder = NotificationCompat.Builder(context, channelId)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle(notification.title)
+            .setContentText(notification.message)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(notification.message))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_EVENT)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setDefaults(NotificationCompat.DEFAULT_ALL)
+            .setSound(soundUri)
+            .setAutoCancel(true)
+            .setContentIntent(pendingIntent)
+
+        sendNotification(context, notifId, builder, "app_notif_${notification.id}")
+    }
+
     // --- ⏰ 3. SCHEDULE BACKGROUND ALARM ---
 
     fun scheduleBackgroundDeadlineAlarm(context: Context, event: CollegeEvent) {

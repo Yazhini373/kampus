@@ -63,6 +63,8 @@ fun FacultyEventPublishScreen(
     onFacultyApproved: (FacultyKYC) -> Unit,
     onFacultyDeleted: (FacultyKYC) -> Unit,
     onDeleteEvent: (CollegeEvent) -> Unit,
+    onRejectEvent: (CollegeEvent, String) -> Unit = { _, _ -> },
+    onCompleteEvent: (CollegeEvent) -> Unit = {},
     onUpdateFacultyLayout: (FacultyKYC) -> Unit = {},
     onUpdateFaculty: (FacultyKYC) -> Unit = {},
     onLogout: () -> Unit
@@ -1290,18 +1292,42 @@ fun FacultyEventPublishScreen(
                                         Text(ev.title, fontWeight = FontWeight.Bold, fontSize = 17.sp, color = Color(0xFF0F172A))
                                         Text("Category: ${ev.category} • Role: ${ev.coordinatorRole}", fontSize = 12.sp, color = Color(0xFF2563EB), fontWeight = FontWeight.SemiBold)
                                         Text("📅 ${ev.eventDate} • ⏰ ${ev.startTime} to ${ev.endTime}", fontSize = 12.sp, color = Color(0xFF475569))
+                                        if (ev.status == "COMPLETED") {
+                                            Text("Status: COMPLETED", fontSize = 12.sp, color = Color(0xFF16A34A), fontWeight = FontWeight.Bold)
+                                        }
                                     }
 
-                                    Button(
-                                        onClick = {
-                                            onDeleteEvent(ev)
-                                            Toast.makeText(context, "Event deleted from feed!", Toast.LENGTH_SHORT).show()
-                                        },
-                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
-                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                                        shape = RoundedCornerShape(8.dp)
-                                    ) {
-                                        Text("🗑️ Delete", fontSize = 11.sp)
+                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        if (ev.status != "COMPLETED") {
+                                            Button(
+                                                onClick = {
+                                                    onCompleteEvent(ev)
+                                                    Toast.makeText(context, "Event marked as Completed!", Toast.LENGTH_SHORT).show()
+                                                },
+                                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)),
+                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                                                shape = RoundedCornerShape(8.dp)
+                                            ) {
+                                                Text("✔ Done", fontSize = 11.sp)
+                                            }
+                                        }
+
+                                        Button(
+                                            onClick = {
+                                                if (isCollegeAdmin) {
+                                                    onRejectEvent(ev, "Administrative review decision")
+                                                    Toast.makeText(context, "Event rejected & removed!", Toast.LENGTH_SHORT).show()
+                                                } else {
+                                                    onDeleteEvent(ev)
+                                                    Toast.makeText(context, "Event deleted from feed!", Toast.LENGTH_SHORT).show()
+                                                }
+                                            },
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                                            shape = RoundedCornerShape(8.dp)
+                                        ) {
+                                            Text(if (isCollegeAdmin) "❌ Reject" else "🗑️ Delete", fontSize = 11.sp)
+                                        }
                                     }
                                 }
                             }

@@ -69,22 +69,7 @@ class DeadlineReminderWorker(
                             if (!alreadyNotified) {
                                 NotificationHelper.markEventAsProcessed(applicationContext, "deadline_reminder_${event.id}_${daysDiff}d")
 
-                                val daysText = when (daysDiff) {
-                                    0L -> "TODAY"
-                                    1L -> "TOMORROW"
-                                    else -> "in $daysDiff days"
-                                }
-
-                                // Create in-app notification for all students
-                                NotificationHelper.createBroadcastNotification(
-                                    applicationContext,
-                                    "⏰ Deadline Approaching: ${event.title}",
-                                    "Registration for ${event.title} at ${event.college} closes $daysText (${event.deadline})",
-                                    "EVENT_DEADLINE",
-                                    event.id
-                                )
-
-                                // Also send local push notification
+                                // Post local push reminder directly to device status bar
                                 NotificationHelper.notifyDeadlineReminder(applicationContext, com.kampus.yal.app.models.StudentUser(), event)
 
                                 remindersSent++

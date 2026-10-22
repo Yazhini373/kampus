@@ -676,8 +676,7 @@ fun ProfileScreen(
                                 Text("Top Skills", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color(0xFF0F172A))
                                 Text("✏️ Edit", color = Color(0xFF2563EB), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             }
-                            Spacer(modifier = Modifier.height(4.dp))
-                            OptIn(ExperimentalLayoutApi::class)
+                            @OptIn(ExperimentalLayoutApi::class)
                             FlowRow(
                                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                                 verticalArrangement = Arrangement.spacedBy(6.dp),

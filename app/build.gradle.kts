@@ -30,8 +30,8 @@ android {
         applicationId = "com.kampus.yal.app"
         minSdk = 24
         targetSdk = 37
-        versionCode = 9
-        versionName = "2.1.5"
+        versionCode = 10
+        versionName = "2.1.6"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -85,6 +85,7 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation("androidx.fragment:fragment-ktx:1.8.6")
 
     implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("com.google.code.gson:gson:2.10.1")

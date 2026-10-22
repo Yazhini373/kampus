@@ -175,28 +175,10 @@ fun KampusApp(initialDeepLinkEventId: String? = null) {
                     val notifKey = "notif_${notif.id}"
                     if (!notif.isRead && !NotificationHelper.isEventAlreadyProcessed(context, notifKey)) {
                         NotificationHelper.markEventAsProcessed(context, notifKey)
-                        val ev = CollegeEvent(
-                            id = notif.eventId.ifBlank { System.currentTimeMillis().toString() },
-                            title = notif.title,
-                            college = "Kampus Platform",
-                            category = notif.type,
-                            deadline = "Register Now",
-                            eventDate = "Upcoming",
-                            startTime = "10:00 AM",
-                            endTime = "12:00 PM",
-                            mode = "Offline",
-                            eligibility = "All Students",
-                            fee = "Free",
-                            coordinatorName = "Campus Convener",
-                            coordinatorRole = "Faculty",
-                            postedTime = "Just now",
-                            announcementNote = "",
-                            fullDescription = notif.message,
-                            prizePool = "",
-                            targetDept = "All Departments",
-                            posterUrl = ""
-                        )
-                        NotificationHelper.notifyEventPublished(context, ev)
+                        // Mark as read in DB so it doesn't repeatedly fetch as unread across sessions
+                        MongoDBHelper.markNotificationAsRead(notif.id) { _ -> }
+
+                        NotificationHelper.notifyGenericNotification(context, notif)
                     }
                 }
             }
@@ -228,22 +210,14 @@ fun KampusApp(initialDeepLinkEventId: String? = null) {
         var isInitialEventsSync = true
         MongoDBHelper.listenToEvents { remoteEvents ->
             if (isInitialEventsSync) {
-                // Initial load: Notify for any recent unexpired events
+                // Initial load: Mark all pre-existing events as already processed so opening the app
+                // doesn't trigger a flood or loop of old event notifications.
                 for (ev in remoteEvents) {
-                    val eventTime = ev.id.toLongOrNull() ?: 0L
-                    val isVeryRecent = eventTime > 0L && (System.currentTimeMillis() - eventTime) < 30 * 60 * 1000L
-                    
-                    if (isVeryRecent && !NotificationHelper.isEventAlreadyProcessed(context, ev.id)) {
-                        NotificationHelper.markEventAsProcessed(context, ev.id)
-                        NotificationHelper.cacheEventLocally(context, ev)
-                        if (!NotificationHelper.isDeadlinePassed(ev.deadline) && !ev.isExpired()) {
-                            NotificationHelper.notifyEventPublished(context, ev)
-                        }
-                    }
+                    NotificationHelper.markEventAsProcessed(context, ev.id)
                 }
                 isInitialEventsSync = false
             } else {
-                // Real-time updates: Instantly notify for newly posted events across all logged in users
+                // Real-time updates: Only notify for genuine newly-posted events while app is running
                 for (newEvent in remoteEvents) {
                     val isAlreadyProcessed = NotificationHelper.isEventAlreadyProcessed(context, newEvent.id)
                     if (!isAlreadyProcessed) {
@@ -776,6 +750,38 @@ fun KampusApp(initialDeepLinkEventId: String? = null) {
                         allParticipants.removeIf { it.eventId == eventToDelete.id }
                         dataManager.saveEvents(allEvents.toList())
                         dataManager.saveParticipants(allParticipants.toList())
+                    },
+                    onRejectEvent = { eventToReject, reason ->
+                        // 🔔 4. Event Rejected: Send rejection notification to creator faculty
+                        val creator = allFaculties.find { it.name.equals(eventToReject.coordinatorName, ignoreCase = true) }
+                        val creatorEmail = creator?.collegeEmail ?: ""
+                        NotificationHelper.notifyEventRejected(
+                            context = context,
+                            creatorEmail = creatorEmail,
+                            event = eventToReject,
+                            reason = reason
+                        )
+                        MongoDBHelper.deleteEvent(eventToReject.id) { _ -> }
+                        allEvents.removeIf { it.id == eventToReject.id }
+                        allParticipants.removeIf { it.eventId == eventToReject.id }
+                        dataManager.saveEvents(allEvents.toList())
+                        dataManager.saveParticipants(allParticipants.toList())
+                    },
+                    onCompleteEvent = { eventToComplete ->
+                        // 🔔 5. Event Completed: Update status to COMPLETED and notify registered participants
+                        val completedEvent = eventToComplete.copy(status = "COMPLETED")
+                        MongoDBHelper.saveEvent(completedEvent) { _ -> }
+                        val evIdx = allEvents.indexOfFirst { it.id == eventToComplete.id }
+                        if (evIdx != -1) {
+                            allEvents[evIdx] = completedEvent
+                        }
+                        val eventParticipants = allParticipants.filter { it.eventId == eventToComplete.id }
+                        NotificationHelper.notifyEventCompleted(
+                            context = context,
+                            event = completedEvent,
+                            participants = eventParticipants
+                        )
+                        dataManager.saveEvents(allEvents.toList())
                     },
                     onUpdateFacultyLayout = { updatedFaculty ->
                         MongoDBHelper.uploadImageToStorage(context, updatedFaculty.collegePhotoUri, "campus_banners") { bannerUrl ->

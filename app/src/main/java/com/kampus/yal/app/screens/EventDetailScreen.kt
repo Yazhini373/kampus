@@ -159,7 +159,14 @@ fun EventDetailScreen(
                                 )
                                 MongoDBHelper.saveParticipant(newParticipant) { success ->
                                     if (success) {
-                                        Toast.makeText(context, "Synced to MongoDB Team Finder!", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(context, "Registration Confirmed!", Toast.LENGTH_SHORT).show()
+                                        // 🔔 2. Event Registration Successful: notify registered student ONLY
+                                        NotificationHelper.notifyRegistrationSuccessful(
+                                            context = context,
+                                            studentEmail = currentUser.email,
+                                            studentName = currentUser.name,
+                                            event = event
+                                        )
                                     } else {
                                         Toast.makeText(context, "Failed to sync with MongoDB", Toast.LENGTH_SHORT).show()
                                     }
